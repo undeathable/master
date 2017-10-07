@@ -1,0 +1,342 @@
+---
+title: 'DA5020 - Homework 5: Dates and Times'
+output:
+  html_document: default
+  pdf_document: default
+date: '`r Sys.Date()`'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  # mute messages output
+  message = FALSE
+)
+```
+
+Continue working with Farmers Market data from last week.
+
+This week's assignment is not only about dates and times, but also what you learnt from past weeks: data transformation, strings, and more.
+
+You may also need to go through a review on [R control statesments](http://uc-r.github.io/control_statements) since they will come handy in solving some of the problems.
+
+## Questions
+
+```{r}
+#setwd("C:/Users/Zhixiong Cheng/Desktop/DA5020 17561 CollectStoreRetrieve Data SEC 01 Fall 2017 Semester Graduate [BOS-2-TR]/Week 4-Data wrangling data import and strings")
+farmers_market <- read.csv("farmers_market.csv", header = TRUE, stringsAsFactors = FALSE, na.strings = "")
+#str(farmers_market)
+library(lubridate)
+```
+
+
+1. (10 points) Add a new column `Season1Days` that contains the number of days a market is opened per week (for the dates it is open).
+
+```{r}
+library(tidyverse)
+library(stringr)
+# first store the Season1Days into variable a:
+a<-farmers_market$Season1Time %>%
+  strsplit(split="\\;") %>% # after observation, the time is seperated by symbol ";"
+  lapply(function(x) length(x[!is.na(x)])) %>%
+  unlist()
+# Then add it as the new column of farmers_market table
+options(tibble.width = Inf)
+options(tibble.print_max = 25, tibble.print_min = 20)
+Q1 <- farmers_market %>%
+  mutate(Season1Days =a) %>%
+  as_tibble() %>%
+  select(c("FMID", "Season1Time", "Season1Days")) 
+Q1
+# mutate(sep = do.call(rbind, lapply(a, function(x) length(x[!is.na(x)]))))
+```
+
+2. (10 points) Add a new column `WeekendOpen` indicating whether a market opens during weekends in `Season1`.
+
+```{r}
+# my rule is that if a market opens during weekends in `Season1`, then `WeekendOpen` = TRUE; or `WeekendOpen` = FALSE
+a<-farmers_market$Season1Time %>%
+  strsplit(split="\\;") # after observation, the time is seperated by symbol ";"
+index <- grep("Sun|Sat", a, ignore.case = TRUE) # get the index of opens during weekends
+
+# print out the result:
+options(tibble.width = Inf)
+options(tibble.print_max = 25, tibble.print_min = 20)
+Q2 <- farmers_market %>%
+  mutate( WeekendOpen = ifelse(c(1:length(farmers_market$Season1Time)) %in% index, TRUE, FALSE)) %>%
+  as_tibble() %>%
+  select(c("FMID", "Season1Time","WeekendOpen"))
+Q2
+```
+
+
+
+3. (20 points) Find out which markets close before 6PM, and which open only for fewer than 4 hours a day. For simplicity, consider only `Season1Time`. For markets with different open hours across a week, use the average length of open hours for the days they actually open. 
+
+```{r}
+options(warn = -1) 
+library(dplyr)
+# first is to get the table of markets that is closed before 6PM: 
+## my rule for multiple close days is that if one market close before 6pm on Sunday, for example, and don't close before 6pm on Monday, we will treat it as the market that don't close before 6pm.
+b<-farmers_market$Season1Time %>% # b is the date with string format, mode is list:
+  str_extract_all( pattern = "\\-\\s?\\d\\d?\\:\\d{2}\\s?[a|A|p|P][m|M]") %>%
+  str_extract_all( pattern = "\\d\\d?\\:\\d{2}\\s?[a|A|p|P][m|M]") 
+# Find the list of market that close before 6pm:
+temp_list<-as.logical( c(1:length(farmers_market$Season1Time)))
+for (ind in c(1:length(farmers_market$Season1Time))){
+  temp_list[ind] <- (min(parse_time(unlist(b[ind]))) < parse_time("6:00 pm"))
+}
+# get the index that market close before 6pm: which(temp_list == TRUE)
+# print out the result:
+options(tibble.width = Inf)
+options(tibble.print_max = 25, tibble.print_min = 20)
+Q4_1 <- farmers_market %>%
+  as_tibble() %>%
+  mutate(FMID,
+         Season1Time,
+    close_before_six = temp_list) %>%
+  select(c("FMID", "Season1Time", "close_before_six"))
+Q4_1
+```
+
+
+
+```{r}
+# Second is to get the table of markets that open only for fewer than 4 hours a day
+options(warn = -1) 
+library(dplyr)
+b<-farmers_market$Season1Time %>% # b is the date with string format, mode is list:
+  str_extract_all( pattern = "\\d\\d?\\:\\d{2}\\s?[a|A|p|P][m|M]") 
+# get the time interval, and compare it with 4 hours:
+tp_avg <- vector(mode="logical", length=length(farmers_market$Season1Time))
+for (ind in c(1:length(farmers_market$Season1Time))){
+  i <- length(b[[ind]])/2
+  # initialize a temporary vector:
+  tp_list <- vector(mode="numeric", length=i)
+  if(i >= 1){
+  for (ii in seq(from = 1, to = length(b[[ind]]), by = 2)){
+  tp_list[(ii+1)/2] <- parse_time(b[[ind]][ii+1]) - parse_time(b[[ind]][ii])
+  }
+  }else tp_list = NA
+  # get avarage time difference:
+  tp_avg[ind] <- mean(tp_list) < as.integer(dhours(4)) # tp_avg would be TRUE if average time diff is less than 4 hours; FALSE otherwise.
+  
+}
+# get the index that market open only for fewer than 4 hours a day: which(tp_avg == TRUE)
+# print out the result:
+
+options(tibble.width = Inf)
+options(tibble.print_max = 25, tibble.print_min = 20)
+Q4_2 <- farmers_market %>%
+  as_tibble() %>%
+  mutate(FMID,
+         Season1Time,
+    open_fewer_four = tp_avg) %>%
+  select(c("FMID", "Season1Time", "open_fewer_four"))
+Q4_2
+```
+
+
+
+4. (40 Points) The seasons are not standardized and would make analysis difficult. Create four new columns for four seasons (Spring, Summer, Fall, Winter), indicating whether a market is available in that season. Also, create two additional columns `HalfYear` and `YearRound` to identify those who open across seasons. Define "half year" and "year round" on your own terms, but explain them before you write the code (or as comments in your code). (Hint: you may want to create even more auxiliary columns, `Season1BeginDate` and `Season1EndDate` for example.)
+
+```{r}
+# First I check the exact date for 4 seasons in 2017 online:
+# Spring: March 20th ~ June 19th
+# Summer: June 20th ~ September 21st
+# Fall: September 22nd ~ December 20th
+# Winter: 	December 21st ~ December 31st AND January 1st ~ March 19th
+options(warn = -1) 
+
+# initialized the four columns:
+Spring_col <- rep(NA, length=length(farmers_market$Season1Time))
+Summer_col <- rep(NA, length=length(farmers_market$Season1Time))
+Fall_col <- rep(NA, length=length(farmers_market$Season1Time))
+Winter_col <- rep(NA, length=length(farmers_market$Season1Time))
+
+  
+a<- farmers_market$Season1Date %>%
+  strsplit(split="\\s+to\\s+") 
+
+# add two auxiliary columns:
+Season1BeginDate<-rep(NA, length=length(farmers_market$Season1Time))
+Season1EndDate<-rep(NA, length=length(farmers_market$Season1Time))
+for(n1 in c(1:length(farmers_market$Season1Time))){
+Season1BeginDate[n1] <- a[[n1]][1]
+Season1EndDate[n1] <- a[[n1]][2] 
+}
+
+# get index of full date and only contain month
+ind_no_number_begin <- grep(pattern = "^[a-zA-Z]+$", Season1BeginDate) # get index of only contain month
+ind_no_number_end <- grep(pattern = "^[a-zA-Z]+$", Season1EndDate) # get index of only contain month
+
+
+# add days and year to the date that only contain month:
+Season1BeginDate[ind_no_number_begin] <- paste(Season1BeginDate[ind_no_number_begin], "1, 2017")
+Season1EndDate[ind_no_number_end] <- paste(Season1EndDate[ind_no_number_end], "1, 2017")
+
+
+# get intervals for 4 seasons:
+    in_sp <- as.interval( mdy("03/20/2017",tz = "UTC"), mdy("06/19/2017",tz = "UTC"))
+    in_sm <- as.interval(mdy("06/20/2017",tz = "UTC"), mdy("09/21/2017",tz = "UTC"))
+    in_f <- as.interval(mdy("09/22/2017",tz = "UTC"), mdy("10/20/2017",tz = "UTC"))
+    in_w1 <- as.interval(mdy("12/21/2017",tz = "UTC"), mdy("12/31/2017",tz = "UTC"))
+    in_w2 <- as.interval(mdy("01/01/2017",tz = "UTC"), mdy("03/19/2017",tz = "UTC"))
+    
+
+# for loop to get 4 seasons' columns:
+for(ind in c(1:length(farmers_market$Season1Date))){
+
+    if(!is.na(Season1BeginDate[ind])){
+    bg <- make_datetime(2017, month(mdy(Season1BeginDate[ind])), day(mdy(Season1BeginDate[ind] )))
+    } else bg<-as.Date(NA) # bg is the begining date 
+    if(!is.na(Season1EndDate[ind])){
+    ed <- make_datetime(2017, month(mdy(Season1EndDate[ind])), day(mdy(Season1EndDate[ind] )))
+    } else ed<-as.Date(NA) # ed is the closing date
+    
+    # need to get the across seasons situations:
+    over_3_2 <- ((bg %within% in_f) & (ed %within% in_sm)) # it means market start from fall(i.e.3), and close in summer next year(i.e.2)
+    over_4_2 <- ((((bg %within% in_w1)|(bg %within% in_w2))) & (ed %within% in_sm))
+    over_4_3 <- ((((bg %within% in_w1)|(bg %within% in_w2))) & (ed %within% in_f))
+    over_1_3 <- ((bg %within% in_sp) & (ed %within% in_f))
+    over_1_4 <- ((bg %within% in_sp) & (((ed %within% in_w1)|(ed %within% in_w2))))
+    over_2_4 <- ((bg %within% in_sm) & (((ed %within% in_w1)|(ed %within% in_w2))))
+    over_2_1 <- ((bg %within% in_sm) & (ed %within% in_sp))
+    over_3_1 <- ((bg %within% in_f) & (ed %within% in_sp))
+    
+      if(!is.na((bg %within% in_sp)|(ed %within% in_sp)| over_3_2 |over_4_2|over_4_3)){    
+      Spring_col[ind] <- (bg %within% in_sp)|(ed %within% in_sp)| over_3_2 |over_4_2|over_4_3
+      }#Spring_col could be TRUE, FALSE, NA(i.e.unknown)
+      
+      if(!is.na((bg %within% in_sm)|(ed %within% in_sm)|over_4_3|over_1_3|over_1_4)){
+      Summer_col[ind] <- (bg %within% in_sm)|(ed %within% in_sm)|over_4_3|over_1_3|over_1_4
+      }
+      
+      if(!is.na((bg %within% in_f)|(ed %within% in_f)|over_1_4|over_2_4|over_2_1)){
+      Fall_col[ind] <- (bg %within% in_f)|(ed %within% in_f)|over_1_4|over_2_4|over_2_1
+      }
+      
+      if(!is.na(((bg %within% in_w1)|(bg %within% in_w2))|((ed %within% in_w1)|(ed %within% in_w2))|over_2_1|over_3_1|over_3_2)){
+      Winter_col[ind] <- ((bg %within% in_w1)|(bg %within% in_w2))|((ed %within% in_w1)|(ed %within% in_w2))|over_2_1|over_3_1|over_3_2}
+    
+
+}
+
+# year round means the market open for all seasons per year
+# convert logical elements to numbers, TRUE = 1, FAlSE = 0, NA = 0:  
+Spring_col_num <- as.numeric(Spring_col)
+Spring_col_num[is.na(Spring_col_num[1:8707])] <- 0
+
+Summer_col_num <- as.numeric(Summer_col)
+Summer_col_num[is.na(Summer_col_num[1:8707])] <- 0
+
+Fall_col_num <- as.numeric(Fall_col)
+Fall_col_num[is.na(Fall_col_num[1:8707])] <- 0
+
+Winter_col_num <- as.numeric(Winter_col)
+Winter_col_num[is.na(Winter_col_num[1:8707])] <- 0
+
+year_round <- Spring_col_num + Summer_col_num + Fall_col_num + Winter_col_num
+year_round[year_round!=4] <- 0
+year_round[year_round==4] <- 1
+year_round<- as.logical(year_round)
+    
+# half year means the market open for exact 2 seasons per year, no matter what the sequence is: e.g. only open at summer and winter:
+half_year <- Spring_col_num + Summer_col_num + Fall_col_num + Winter_col_num
+half_year[half_year!=2] <- 0
+half_year[half_year==2] <- 1
+half_year<- as.logical(half_year)
+
+options(tibble.width = Inf)
+options(tibble.print_max = 30, tibble.print_min = 20)
+Q5 <- farmers_market$Season1Date %>%
+  as_tibble() %>%
+  mutate(
+         Season1BeginDate = Season1BeginDate,
+         Season1EndDate = Season1EndDate,
+         Spring_col = Spring_col,
+         Summer_col = Summer_col,
+         Fall_col = Fall_col,
+         Winter_col = Winter_col,
+         year_round = year_round,
+         half_year = half_year
+         ) %>%
+  select(c( "Season1BeginDate", "Season1EndDate", "Spring_col", "Summer_col", "Fall_col", "Winter_col", "year_round", "half_year"))
+  
+Q5
+```
+
+
+
+
+
+5. (20 points) _Open question_: explore the new variables you just created. Aggregate them at different geographic levels, or some other categorical variable. What can you discover?
+
+```{r}
+#`Season1Days` means the number of days a market is opened per week: Q1$Season1Days
+# `WeekendOpen` indicating whether a market opens during weekends in `Season1`: Q2$WeekendOpen
+# in Season1, which markets close before 6PM, and which open only for fewer than 4 hours a day: Q4_1$close_before_six; Q4_2$open_fewer_four
+# four new columns for four seasons (Spring, Summer, Fall, Winter), indicating whether a market is available in that season. Also, create two additional columns `HalfYear` and `YearRound`: Q5
+
+# get a big table:
+options(tibble.width = Inf)
+options(tibble.print_max = 30, tibble.print_min = 20)
+Q_all <- farmers_market %>%
+  as_tibble() %>%
+  mutate(FMID,
+         city,
+         State,
+         Season1Date,
+         Season1Time,
+         Season1Days = Q1$Season1Days,
+         WeekendOpen = Q2$WeekendOpen,
+         close_before_six = Q4_1$close_before_six,
+         open_fewer_four = Q4_2$open_fewer_four,
+         Spring_col = Q5$Spring_col,
+         Summer_col = Q5$Summer_col,
+         Fall_col= Q5$Fall_col,
+         Winter_col= Q5$Winter_col,
+         year_round = Q5$year_round,
+         half_year = Q5$half_year) %>%
+  select(c("FMID", "city", "State","Season1Date", "Season1Time", "Season1Days","WeekendOpen","close_before_six", "open_fewer_four",  "Spring_col", "Summer_col", "Fall_col", "Winter_col", "year_round", "half_year"))
+Q_all
+# First to see the count of variable Season1Days:
+Q_all %>%
+  ggplot(aes(Season1Days)) +
+    geom_bar()
+## Conclustion: we can see that most of the markets only open 0 or 1 day per week in Season1.
+
+# Then, we discover relationship between Season1Days and WeekendOpen:
+Q_all %>%
+  ggplot() +
+    geom_bar(aes(x= Season1Days, fill = WeekendOpen), position = "fill")
+## Conclustion: in terms of proportion, the market tend to open at weekend when they open more than 3 days per week; when the market only open 1 day per week, 50% of the chance they would open exactly on weekend.
+
+# 3rd, let's group by Season1Days, close_before_six and open_fewer_four to see the behaviour of the market:
+Q_all %>%
+  filter(!is.na(close_before_six), !is.na(open_fewer_four)) %>%
+  group_by(Season1Days,close_before_six,open_fewer_four) %>%
+  summarise(n= n())
+## Conclusion: for the market that only open 1 day per week, the most possible case would be that it close before 6pm and open more than 4 hours a day; this is also TRUE for the market open 2, 3 and 4 day per week.
+
+# 4th, geographic levels: group by state and Season1Days
+Q_all %>%
+  group_by(State,Season1Days) %>%
+  summarise(n= n()) %>%
+  arrange(desc(Season1Days), desc(n))
+## Conclusion: we can find Virginia has the most markets that open all days per week, Texas is next.
+
+# 5th, let's find year_round city:
+Q_all %>%
+  filter(!is.na(year_round)) %>%
+  group_by(State,city,year_round) %>%
+  summarise(n= n()) %>%
+  arrange(desc(year_round),desc(n))
+## Conclusion: we can find New York city and Queens city has the most markets that open all seasons
+```
+
+
+
+
+## Submission
+You need to submit an .Rmd extension file as well as the generated pdf file. Be sure to state all the assumptions and give explanations as comments in the .Rmd file wherever needed to help us assess your submission. Please name the submission file LAST_FirstInitial_1.Rmd for example for John Smith's 1st assignment, the file should be named Smith_J_1.Rmd. 
+
